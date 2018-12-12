@@ -1,0 +1,59 @@
+Problem Scenario 4. http://arun-teaches-u-tech.blogspot.com/p/cca-175-hadoop-and-spark-developer-exam_5.html
+
+
+sqoop import \
+ --connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+ --username retail_user \
+ --password itversity \
+ --table orders \
+ --target-dir /user/aparna149/Arun_Exercise4/text \
+ --fields-terminated-by '\t' \
+ --lines-terminated-by '\n' \
+ --as-textfile \
+ -m 1
+                                                                                                                                                                                                                                sqoop import  \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_db  \
+--username retail_user  \
+--password itversity  \
+--table orders  \
+--target-dir /user/aparna149/Arun_Exercise4/avro   \
+--as-avrodatafile \
+-m 1 
+
+sqoop import  \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_db  \
+--username retail_user  \
+--password itversity  \
+--table orders  \
+--target-dir /user/aparna149/Arun_Exercise4/parquet   \
+--as-parquetfile \
+-m 1
+
+ordersAvro = sqlContext.read.format("com.databricks.spark.avro").load("/user/aparna149/Arun_Exercise4/avro")
+sqlContext.setConf("spark.sql.parquet.compression.codec", "snappy")
+ordersAvro.write.parquet("/user/aparna149/Arun_Exercise4/parquet-snappy-compress")
+
+ordersAvroRDD = ordersAvro.map(lambda x: ( x[0],x[1], x[2], x[3]))
+ordersAvroRDD.saveAsTextFile("/user/aparna149/Arun_Exercise4/text-gzip-compress",compressionCodecClass ="org.apache.hadoop.io.compress.GzipCodec")
+How to convert RDD to sequence File, compressed/uncompressed mode?
+ordersAvroRDD.saveAsTextFile("/user/aparna149/user/aparna149/Arun_Exercise4/text-snappy-compress",compressionCodecClass ="org.apache.hadoop.io.compress.SnappyCodec")
+
+ordersParquet = sqlContext.read.parquet("/user/aparna149/Arun_Exercise4/parquet-snappy-compress")
+sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+ordersParquet.write.parquet("/user/aparna149/Arun_Exercise4/parquet-no-compress")
+
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy")
+ordersParquet.write.format("com.databricks.spark.avro").save("/user/aparna149/Arun_Exercise4/avro-snappy")
+
+ordersAvroSnappy = sqlContext.read.format("com.databricks.spark.avro").load("/user/aparna149/Arun_Exercise4/avro-snappy")
+
+sqlContext.setConf("spark.sql.json.compression.codec","uncompressed")
+ordersAvroSnappy.write.json("/user/aparna149/Arun_Exercise4/json-no-compress")
+
+sqlContext.setConf("spark.sql.json.compression.codec","gzip")
+ordersAvroSnappy.write.json("/user/aparna149/Arun_Exercise4/json-gzip")
+
+ordersJson = sqlContext.read.json("/user/aparna149/Arun_Exercise4/json-gzip")
+ordersJsonRdd = ordersJson.map(lambda x: (x[0], x[1], x[2], x[3]))
+ordersJsonRdd.saveAsTextFile("/user/aparna149/Arun_Exercise4/csv-gzip",compressionCodecClass ="org.apache.hadoop.io.compress.GzipCodec")
+
