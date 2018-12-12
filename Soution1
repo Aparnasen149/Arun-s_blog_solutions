@@ -1,0 +1,101 @@
+Problem1. http://arun-teaches-u-tech.blogspot.com/p/cca-175-prep-problem-scenario-1.html
+
+
+
+sqoop import \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+--username retail_user \
+--password itversity \
+--table orders \
+--target-dir /user/aparna149/Arun-Exercise1/orders \
+--compress  \
+--compression-codec org.apache.hadoop.io.compress.SnappyCodec \
+--as-avrodatafile \
+-m 1
+
+sqoop import \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+--username retail_user \
+--password itversity \
+--table order_items \
+--target-dir /user/aparna149/Arun-Exercise1/order_items \
+--compress \
+--compression-codec org.apache.hadoop.io.compress.SnappyCodec \
+--as-avrodatafile \
+-m 1
+
+pyspark --master yarn --conf spark.ui.port=12569 --num-executors 4 --packages com.databricks:spark-avro_2.10:2.0.1
+
+ordersDF = sqlContext.read.format("com.databricks.spark.avro").load("/user/aparna149/Arun-Exercise1/orders")
+order_itemsDF = sqlContext.read.format("com.databricks.spark.avro").load("/user/aparna149/Arun-Exercise1/order_items")
+ordersDF.registerTempTable("orders_table")
+order_itemsDF.registerTempTable("order_items_table")
+
+sortedData = sqlContext.sql("select to_date(from_unixtime(o.order_date/1000)) Order_date,o.order_status,count(distinct(o.order_id))Total_Orders,round(sum(oi.order_item_subtotal),2) Total_Revenue from orders_table o join order_items_table oi on o.order_id = oi.order_item_order_id group by o.order_date,o.order_status order by Order_date desc, o.order_status asc, Total_Orders asc,Total_Revenue desc")
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sortedData.write.parquet("/user/aparna149/Arun-Solution1b-gzip")
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","snappy")
+sortedData.write.parquet("/user/aparna149/Arun-Solution1b-snappy")
+
+sqlContext.setConf("spark.sql.csv.compression.codec", "uncompressed")
+sortedDataRDD = sortedData.map(lambda x: (str(x[0])+","+x[1]+","+str(x[2])+","+str(x[3])))
+sortedDataRDD.saveAsTextFile("/user/aparna149/Arun-Solution1b-csv")
+
+sqoop export  \
+--connect "jdbc:mysql://ms.itversity.com:3306/retail_export" \
+--username retail_user \
+--password itversity \
+--table result_aparna \
+--export-dir "/user/aparna149/Arun-Solution1b-csv" \
+--columns "order_date,order_status,Total_order,Total_Count" \
+-m 1
+
+By using RDD
+-----------
+ordersmap = ordersDF.map(lambda x:( x[0],(x[1],x[3])))
+order_itemsmap= order_itemsDF.map(lambda x:(x[1], x[4]))
+ordersJoinOrderItems = ordersmap.join(order_itemsmap)
+
+FinalResult= ordersJoinOrderItems.map(lambda x:(x[1]))
+
+FinalResultMap = FinalResult.combineByKey(lambda x:(x,1), lambda x,y:(x[0]+y, x[1]+1), lambda x,y:(x[0]+y[0], x[1]+y[1]))
+
+for i in FinalResultMap.take(10): print(i)
+
+FinalResultDF = FinalResultMap.map(lambda x: Row(order_date = x[0][0], order_status = x[0][1],Total_order=x[1][0], Total_Count = x[1][1])).toDF()
+
+FinalResultDF.registerTempTable("TotalOrders")
+
+sqlContext.sql("select to_date(from_unixtime(order_date/1000)) order_date,order_status,round(Total_order, 2)Total_order ,Total_Count from TotalOrders order by order_date desc, order_status,Total_order desc,Total_Count").show()
+
+mysql -h ms.itversity.com -u retail_user -p 
+itversity
+use retail_export
+
+CREATE TABLE result_aparna (
+  order_date varchar(20) ,
+  order_status varchar(20) ,
+  Total_Count int(20),
+  Total_Revenue float
+  
+
+sqoop eval \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+--username retail_user \
+--password itversity \
+--query "CREATE TABLE result_aparna (
+  order_date varchar(20) ,
+  order_status varchar(20) ,
+  Total_Count int(20),
+  Total_Revenue float )"
+
+sqoop export \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+--username retail_user \
+--password itversity \
+--export-dir /user/aparna149/Arun-Solution1b-csv  \
+--table result_aparna \
+--columns "order_date,order_status,Total_Count,Total_Revenue"
+
