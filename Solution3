@@ -1,0 +1,95 @@
+Problem Scenario 3. http://arun-teaches-u-tech.blogspot.com/p/cca-175-hadoop-and-spark-developer-exam_28.html
+
+sqoop import-all-tables \
+ --connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+ --username retail_user \
+ --password itversity \
+ --warehouse-dir /apps/hive/warehouse/aparna_new.db \
+ --compress \
+ --compression-codec snappy \
+ --as-avrodatafile \
+ -m 1
+
+hdfs dfs -copyToLocal /apps/hive/warehouse/aparna_new.db/orders/part-m-00000.avro
+avro-tools getschema part-m-00000.avro >orders.avsc
+
+hdfs dfs -mkdir /user/aparna149/Arun-Exercise3
+hdfs dfs -mkdir /user/aparna149/Arun-Exercise3/Order_Schema
+hdfs dfs -copyFromLocal orders.avsc /user/aparna149/Arun-Exercise3/Order_Schema
+
+hive>
+use aparna_new;
+create external table orders_sqoop 
+stored as avro
+location '/apps/hive/warehouse/aparna_new.db/orders'
+tblproperties ('avro.schema.url'='/user/aparna149/Arun-Exercise3/Order_Schema/orders.avsc')
+
+
+select * from orders_sqoop where order_date in (select order_date from (select order_date, count(distinct(order_id)) Order_count from orders_sqoop group by order_date order by Order_count desc  limit 1)q );
+
+create table orders_avro 
+(order_id int, 
+order_date string,
+order_customer_id int,
+order_status string) partitioned by (order_month string) stored as avro;
+
+set hive.exec.dynamic.partition.mode=nonstrict;
+insert overwrite table orders_avro partition(order_month) select order_id, to_date(from_unixtime(cast(order_date/1000 as int))), order_customer_id,order_status, substr(to_date(from_unixtime(cast(order_date/1000 as int))),1,7) order_month from orders_sqoop;
+
+select * from orders_avro where order_date in(select order_date from( select order_date, count(order_id) order_count from orders_avro group by order_date order by  order_count desc limit 1) q);
+
+vi orders.avsc
+{
+  "type" : "record",
+  "name" : "orders",
+  "doc" : "Sqoop import of orders",
+  "fields" : [ {
+    "name" : "order_id",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_id",
+    "sqlType" : "4"
+  }, {
+    "name" : "order_date",
+    "type" : [ "null", "long" ],
+    "default" : null,
+    "columnName" : "order_date",
+    "sqlType" : "93"
+  }, {
+    "name" : "order_customer_id",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_customer_id",
+    "sqlType" : "4"
+  }, {
+    "name" : "order_style",
+    "type" : [ "null", "string" ],
+    "default" : null,
+    "columnName" : "order_style",
+    "sqlType" : "12"
+  },{
+    "name" : "order_zone",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_zone",
+    "sqlType" : "4"
+  } ,{
+    "name" : "order_status",
+    "type" : [ "null", "string" ],
+    "default" : null,
+    "columnName" : "order_status",
+    "sqlType" : "12"
+  }  ],
+  "tableName" : "orders"
+}
+
+
+
+hdfs dfs  -copyFromLocal -f orders.avsc /user/aparna149/Arun-Exercise3/Order_Schema
+(-f for overwriting)
+ insert into
+ orders_sqoop values
+(8888888,1374735600000,11567,"xyz",9,"CLOSED"),(8888889,1374735600000,11567,"xyz",9,"CLOSED"),
+(8888890,1383451200000,11568,'ABCD',10,"PENDING"),(8888891,1383451200000,11568,'PQRS',20,"CLOSED");
+
+select * from orders_sqoop where order_date in(select order_date from( select order_date, count(order_id) order_count from orders_sqoop group by order_date order by  order_count desc limit 1) q);
