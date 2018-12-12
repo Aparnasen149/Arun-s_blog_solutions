@@ -1,0 +1,58 @@
+Problem2. http://arun-teaches-u-tech.blogspot.com/p/cca-175-prep-problem-scenario-2.html
+
+
+mysql -h nn01.itversity.com -u retail_dba -p
+show databases;
+use retail_db;
+show tables;
+desc products;
+
+ sqoop import \
+ --connect jdbc:mysql://ms.itversity.com:3306/retail_db \
+ --username retail_user \
+ --password itversity \
+ --table products \
+ --target-dir /user/aparna149/products \
+ --as-textfile \
+ --fields-terminated-by '|' \
+ -m 1
+
+hdfs dfs -mkdir /user/aparna149/Arun-Exercise2-products
+hdfs dfs -mkdir /user/aparna149/Arun-Exercise2-products/products
+hdfs dfs -mv /user/aparna149/products/* /user/aparna149/Arun-Exercise2-products/products/
+
+permissions: read -> 4 write -> 2 execute ->1 
+read+write+execute -> 4+2+1 = 7
+read+write -> 4+2 =6
+read+execute -> 4+1 =5
+
+hdfs dfs -chmod 765 /user/aparna149/Arun-Exercise2-products/products/*
+
+products = sc.textFile("/user/aparna149/Arun-Exercise2-products/products/")
+
+from pyspark import Row
+productsDF = products.map(lambda x:Row(product_id = int(x.split("|")[0]), product_category_id=int(x.split("|")[1]), product_price = float(x.split("|")[4]))).toDF()
+
+productsDF.registerTempTable("Products")
+
+sortedProductsDF = sqlContext.sql(" select product_category_id, max(product_price) Highest_Price, round(avg (product_price),2) Average_Price, min(product_price) Minimum_Price ,count(distinct(product_id)) Total_Products from Products where product_price < 100 group by product_category_id order by product_category_id desc")
+
+sqlContext.setConf("spark.sql.shuffle.partitions","2")
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy")
+sortedProductsDF.write.format("com.databricks.spark.avro").save("/user/aparna149/Arun-Solution2")
+
+Using RDD
+---------------
+products = sc.textFile("/user/aparna149/aparna/products").filter(lambda x: x.split(",")[4] != "")
+productsFiltered = products.filter(lambda x: float(x.split(",")[4]) <100)
+productsFilteredMap = productsFiltered.map(lambda x: (int(x.split(",")[1]),float(x.split(",")[4])))
+
+pro_MaxCountTotalMin = productsFilteredMap.aggregateByKey((0.0, 0, 0.0,999999999999999.0),lambda x,y:(x[0] if x[0]>y else y ,x[1]+1, x[2]+y, x[3] if x[3]<y else y), lambda x,y:(x[0] if x[0]>y[0] else y[0], x[1]+y[1], x[2]+y[2], x[3] if x[3]<y[3] else y[3])).sortByKey(False)
+for i in pro_MaxCountTotalMin.take(20): print(i)
+
+rddResult = pro_MaxCountTotalMin.map(lambda x: (x[0], x[1][0], x[1][1], round(x[1][2]/x[1][1], 2) ,x[1][3]))
+for i in rddResult.take(20): print(i)
+
+rddResult.toDF().save("/user/aparna149/Exercise2/Products/result-rdd", "com.databricks.spark.avro")
+(with RDD, we can't save into avro format, as save() API is not present in RDD. so it has to be converted into a dataframe.)
+
