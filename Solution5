@@ -1,0 +1,144 @@
+Problem Scenario 5. http://arun-teaches-u-tech.blogspot.com/p/cca-175-hadoop-and-spark-developer-exam_9.html
+
+
+create table dept_aparna as select * from retail_db.departments;
+alter table dept_aparna add constraint primary key(department_id);
+
+insert into dept_aparna values(1, 'Grocery');
+
+mysql -h nn01.itversity.com -u retail_dba -p
+use retail_export;
+
+create table products_demo as select * from retail_db.products;
+alter table products_demo add constraint primary key(product_id);
+alter table products_demo add column (product_grade int, product_sentiment varchar(100));
+
+update products_demo set product_grade = 1  where product_price > 500;
+update products_demo set product_sentiment  = 'WEAK'  where product_price between 300 and  500;
+
+sqoop import \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+--username retail_user \
+--password itversity \
+--table products_demo \
+--target-dir /user/aparna149/Arun_Exercise5/products_text \
+--fields-terminated-by '|' \
+--lines-terminated-by '\n' \
+--null-non-string -1 \
+--null-string 'NOT-AVAILABLE' \
+--where "product_id >=1 and product_id <= 1000" \
+--as-textfile \
+-m 3 \
+--outdir /home/aparna149/sqoop_products_replica_new \
+--boundary-query "select min(product_id),max(product_id)from products_replica_aparna where product_id between  1 and 1000"
+
+
+sqoop import \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+--username retail_user \
+--password itversity \
+--table products_demo \
+--target-dir /user/aparna149/Arun_Exercise5/products-text-part1 \
+--fields-terminated-by '*' \
+--lines-terminated-by '\n' \
+--null-non-string -1000 \
+--null-string 'NA' \
+--where "product_id <= 1111" \
+--as-textfile \
+-m 2
+
+sqoop import \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+--username retail_user \
+--password itversity \
+--table products_demo \
+--target-dir /user/aparna149/Arun_Exercise5/products-text-part2 \
+--fields-terminated-by '*' \
+--lines-terminated-by '\n' \
+--null-non-string -1000 \
+--null-string 'NA' \
+--where "product_id > 1111" \
+--as-textfile \
+-m 5
+
+
+sqoop merge \
+ --class-name
+ --jar-file
+ --new-data /user/aparna149/Arun_Exercise5/products-text-part2 \
+ --onto /user/aparna149/Arun_Exercise5/products-text-part1 \
+ --target-dir /user/aparna149/Arun_Exercise5/products-text-both-parts \
+ --merge-key product_id
+
+sqoop job --create sqoop-job-append \
+-- import \
+--connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+--username retail_user \
+--password itversity \
+--table products_demo \
+--target-dir /user/aparna149/Arun_Exercise5/products-incremental \
+--check-column product_id \
+--incremental append \
+--last-value 0 \
+--as-textfile \
+-m 1
+
+
+
+sqoop job -exec sqoop-job-append
+
+mysql>
+use retail_export;
+insert into products_demo values(1346,2,'something 1','something 2',300.00,'notavaialble',3,'STRONG')
+insert into products_demo values(1347,4,'something 2','something 3',400.00,'notavaialble',5,'STRONG')
+insert into products_demo values(1348,5,'something 5','something 4',600.00,'notavaialble',6,'WEAK')   
+
+sqoop job --exec sqoop-job-append
+
+insert into products_demo values(1376,4,'something 1376','something 2',1.00,'not avaialble',3,'WEAK')
+insert into products_demo values(1365,4,'something 1377','something 2',10.00,'not avaialble',null,'NOT APPLICABLE')
+
+sqoop job --exec sqoop-job-append
+
+hive> use aparna_new;
+
+create table products_hive  
+(product_id int, product_category_id int, product_name string, product_description string, product_price float, product_imaage string,product_grade int,  product_sentiment string);
+
+
+ sqoop job --create products-hive-import \
+ -- import \
+ --connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+ --username retail_user \
+ --password itversity \
+ --table products_demo \
+ --hive-import \
+ --hive-table aparna_new.products_hive  \
+ --incremental append \
+ --last-value 0 \
+ --check-column product_id \
+ -m 1
+
+sqoop job --exec products-hive-import
+
+insert into products_demo values (1378,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE')
+insert into products_demo values (1379,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE')
+
+
+create table products_aparna_external  (product_id int(11) primary Key, product_grade int(11), product_category_id int(11), product_name varchar(100), product_description varchar(100), product_price float, product_impage varchar(500), product_sentiment varchar(100))
+
+sqoop export \
+ --connect jdbc:mysql://ms.itversity.com:3306/retail_export \
+ --username retail_user \
+ --password itversity \
+ --table products_aparna_external  \
+ --export-dir /apps/hive/warehouse/aparna_new.db/products_hive/ \
+ --input-fields-terminated-by '\001' \
+ --input-null-non-string 'null' \
+ --input-null-string 'null' \
+ --update-mode allowinsert \
+ --update-key product_id \
+ --columns 'product_id,product_category_id,product_name,product_description,product_price,product_impage,product_grade,product_sentiment' \
+ -m 1
+
+
